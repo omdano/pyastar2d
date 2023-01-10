@@ -5,6 +5,8 @@
 #include <numpy/arrayobject.h>
 #include <iostream>
 #include <experimental_heuristics.h>
+#include<map>
+
 
 
 const float INF = std::numeric_limits<float>::infinity();
@@ -38,6 +40,8 @@ inline float l1_norm(int i0, int j0, int i1, int j1) {
 }
 
 
+
+
 // weights:        flattened h x w grid of costs
 // h, w:           height and width of grid
 // start, goal:    index of start/goal in flattened grid
@@ -45,8 +49,11 @@ inline float l1_norm(int i0, int j0, int i1, int j1) {
 // paths (output): for each node, stores previous node in path
 static PyObject *astar(PyObject *self, PyObject *args) {
   const PyArrayObject* weights_object;
+  const PyArrayObject* edges_object;
+  const PyArrayObject* values_object;
   int h;
   int w;
+  int m;
   int start;
   int goal;
   int diag_ok;
@@ -55,13 +62,25 @@ static PyObject *astar(PyObject *self, PyObject *args) {
   if (!PyArg_ParseTuple(
         args, "Oiiiiii", // i = int, O = object
         &weights_object,
-        &h, &w,
+        &edges_object,
+        &values_object,
+        &h, &w, &m,
         &start, &goal,
         &diag_ok, &heuristic_override
         ))
     return NULL;
 
-  float* weights = (float*) weights_object->data;
+  int* weights = (int*) weights_object->data;
+  int* edges = (int*) edges_object->data;
+  float* values = (float*) values_object->data;
+  
+  std::map<std::pair<int, int>, float> value_map;
+
+  for (int i=0; i<m; i++)
+  {
+      value_map.insert({{edges[i*2], edges[i*2+1]}, values[i]});
+  }
+
   int* paths = new int[h * w];
   int path_length = -1;
 
@@ -74,6 +93,8 @@ static PyObject *astar(PyObject *self, PyObject *args) {
 
   std::priority_queue<Node> nodes_to_visit;
   nodes_to_visit.push(start_node);
+
+
 
   int* nbrs = new int[8];
   
@@ -108,10 +129,22 @@ static PyObject *astar(PyObject *self, PyObject *args) {
     nbrs[7] = (diag_ok && row + 1 < h && col + 1 < w ) ? cur.idx + w + 1   : -1;
 
     float heuristic_cost;
+    int curLabel = weights[cur.idx];
     for (int i = 0; i < 8; ++i) {
       if (nbrs[i] >= 0) {
         // the sum of the cost so far and the cost of this move
-        float new_cost = costs[cur.idx] + weights[nbrs[i]];
+        float new_cost;
+        int neiLabel = weights[nbrs[i]];
+        if (neiLabel == 0){
+            new_cost = std::numeric_limits<float>::infinity();
+        }
+        else if (neiLabel != curLabel){
+            new_cost = costs[cur.idx] + value_map[{curLabel, neiLabel}];
+        }
+        else
+        {
+            new_cost = costs[cur.idx] + 1;
+        }
         if (new_cost < costs[nbrs[i]]) {
           // estimate the cost to the goal based on legal moves
           // Get the heuristic method to use

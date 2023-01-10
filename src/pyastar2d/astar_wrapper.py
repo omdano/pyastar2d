@@ -14,9 +14,12 @@ ndmat_i2_type = np.ctypeslib.ndpointer(
 # Define input/output types
 pyastar2d.astar.restype = ndmat_i2_type  # Nx2 (i, j) coordinates or None
 pyastar2d.astar.argtypes = [
-    ndmat_f_type,   # weights
+    ndmat_i2_type,   # weights
+    ndmat_i2_type,   # edges
+    ndmat_f_type,   # transitions
     ctypes.c_int,   # height
     ctypes.c_int,   # width
+    ctypes.c_int,   # edge_num
     ctypes.c_int,   # start index in flattened grid
     ctypes.c_int,   # goal index in flattened grid
     ctypes.c_bool,  # allow diagonal
@@ -32,6 +35,8 @@ class Heuristic(IntEnum):
 
 def astar_path(
         weights: np.ndarray,
+        edges: np.ndarray,
+        trans: np.ndarray,
         start: Tuple[int, int],
         goal: Tuple[int, int],
         allow_diagonal: bool = False,
@@ -46,13 +51,7 @@ def astar_path(
     param Heuristic heuristic_override: Override heuristic, see Heuristic(IntEnum)
 
     """
-    assert weights.dtype == np.float32, (
-        f"weights must have np.float32 data type, but has {weights.dtype}"
-    )
-    # For the heuristic to be valid, each move must cost at least 1.
-    if weights.min(axis=None) < 1.:
-        raise ValueError("Minimum cost to move must be 1, but got %f" % (
-            weights.min(axis=None)))
+    
     # Ensure start is within bounds.
     if (start[0] < 0 or start[0] >= weights.shape[0] or
             start[1] < 0 or start[1] >= weights.shape[1]):
@@ -67,7 +66,7 @@ def astar_path(
     goal_idx = np.ravel_multi_index(goal, (height, width))
 
     path = pyastar2d.astar.astar(
-        weights.flatten(), height, width, start_idx, goal_idx, allow_diagonal,
+        weights.flatten(), edges.flatten(), trans.flatten(), height, width, edges.shape[0], start_idx, goal_idx, allow_diagonal,
         int(heuristic_override)
     )
     return path

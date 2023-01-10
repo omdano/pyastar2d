@@ -30,7 +30,7 @@ setuptools.setup(
         "path-finding on a two-dimensional grid."),
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/hjweide/pyastar2d",
+    url="https://github.com/omdano/pyastar2d",
     install_requires=install_requires,
     packages=setuptools.find_packages(where="src", exclude=("tests",)),
     package_dir={"": "src"},
