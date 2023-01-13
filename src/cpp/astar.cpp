@@ -60,7 +60,7 @@ static PyObject *astar(PyObject *self, PyObject *args) {
   int heuristic_override;
 
   if (!PyArg_ParseTuple(
-        args, "Oiiiiii", // i = int, O = object
+        args, "OOOiiiiiii", // i = int, O = object
         &weights_object,
         &edges_object,
         &values_object,
@@ -133,13 +133,20 @@ static PyObject *astar(PyObject *self, PyObject *args) {
     for (int i = 0; i < 8; ++i) {
       if (nbrs[i] >= 0) {
         // the sum of the cost so far and the cost of this move
-        float new_cost;
+        float new_cost = INF;
+        float nc = 0;
         int neiLabel = weights[nbrs[i]];
         if (neiLabel == 0){
-            new_cost = std::numeric_limits<float>::infinity();
+            new_cost = INF;
         }
         else if (neiLabel != curLabel){
-            new_cost = costs[cur.idx] + value_map[{curLabel, neiLabel}];
+            //if (value_map.find({curLabel-1, neiLabel-1}) == value_map.end()){
+            //    new_cost = costs[cur.idx] + 1;
+            //}
+            //else{
+            new_cost = costs[cur.idx] + value_map[{curLabel-1, neiLabel-1}];
+            nc = value_map[{curLabel, neiLabel}];
+            //}
         }
         else
         {

@@ -8,14 +8,17 @@ from typing import Optional, Tuple
 # Define array types
 ndmat_f_type = np.ctypeslib.ndpointer(
     dtype=np.float32, ndim=1, flags="C_CONTIGUOUS")
-ndmat_i2_type = np.ctypeslib.ndpointer(
+ndmat_i1_type = np.ctypeslib.ndpointer(
     dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
-
+ndmat_i2_type = np.ctypeslib.ndpointer(
+    dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
+ndmat_i3_type = np.ctypeslib.ndpointer(
+    dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
 # Define input/output types
-pyastar2d.astar.restype = ndmat_i2_type  # Nx2 (i, j) coordinates or None
+pyastar2d.astar.restype = ndmat_i1_type  # Nx2 (i, j) coordinates or None
 pyastar2d.astar.argtypes = [
     ndmat_i2_type,   # weights
-    ndmat_i2_type,   # edges
+    ndmat_i3_type,   # edges
     ndmat_f_type,   # transitions
     ctypes.c_int,   # height
     ctypes.c_int,   # width
@@ -64,9 +67,9 @@ def astar_path(
     height, width = weights.shape
     start_idx = np.ravel_multi_index(start, (height, width))
     goal_idx = np.ravel_multi_index(goal, (height, width))
-
+    m = edges.shape[0]
     path = pyastar2d.astar.astar(
-        weights.flatten(), edges.flatten(), trans.flatten(), height, width, edges.shape[0], start_idx, goal_idx, allow_diagonal,
+        weights.flatten(), edges.flatten(), trans.flatten(), height, width, m, start_idx, goal_idx, allow_diagonal,
         int(heuristic_override)
     )
     return path
