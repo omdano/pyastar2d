@@ -14,6 +14,7 @@ const float INF = std::numeric_limits<float>::infinity();
 // represents a single pixel
 class Node {
   public:
+    int pidx; // previous index
     int idx; // index in the flattened grid
     float cost; // cost of traversing this pixel
     int path_length; // the length of the path to reach this node
@@ -94,7 +95,7 @@ static PyObject *astar(PyObject *self, PyObject *args) {
   std::priority_queue<Node> nodes_to_visit;
   nodes_to_visit.push(start_node);
 
-
+  int prev_path = -1;
 
   int* nbrs = new int[8];
   
@@ -112,6 +113,13 @@ static PyObject *astar(PyObject *self, PyObject *args) {
     if (cur.idx == goal) {
       path_length = cur.path_length;
       break;
+    }
+
+    if (cur.idx == start){
+        prev_path = -1;
+    }
+    else{
+        prev_path = paths[cur.idx];
     }
 
     nodes_to_visit.pop();
@@ -155,6 +163,8 @@ static PyObject *astar(PyObject *self, PyObject *args) {
         if (new_cost < costs[nbrs[i]]) {
           // estimate the cost to the goal based on legal moves
           // Get the heuristic method to use
+          heuristic_cost = 0;
+          /*
           if (heuristic_override == DEFAULT) {
             if (diag_ok) {
               heuristic_cost = linf_norm(nbrs[i] / w, nbrs[i] % w, goal_i, goal_j);
@@ -165,7 +175,7 @@ static PyObject *astar(PyObject *self, PyObject *args) {
             heuristic_cost = heuristic_func(
               nbrs[i] / w, nbrs[i] % w, goal_i, goal_j, start_i, start_j);
           }
-
+          */
           // paths with lower expected cost are explored first
           float priority = new_cost + heuristic_cost;
           nodes_to_visit.push(Node(nbrs[i], priority, cur.path_length + 1));
@@ -206,6 +216,10 @@ static PyObject *astar(PyObject *self, PyObject *args) {
   return return_val;
 }
 
+
+
+
+
 static PyMethodDef astar_methods[] = {
     {"astar", (PyCFunction)astar, METH_VARARGS, "astar"},
     {NULL, NULL, 0, NULL}
@@ -219,3 +233,4 @@ PyMODINIT_FUNC PyInit_astar(void) {
   import_array();
   return PyModule_Create(&astar_module);
 }
+

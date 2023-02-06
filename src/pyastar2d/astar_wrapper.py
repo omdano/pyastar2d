@@ -65,11 +65,11 @@ def astar_path(
         raise ValueError(f"Goal of {goal} lies outside grid.")
 
     height, width = weights.shape
-    start_idx = np.ravel_multi_index(start, (height, width))
-    goal_idx = np.ravel_multi_index(goal, (height, width))
+    start_idx = int(np.ravel_multi_index(start, (height, width)))
+    goal_idx = int(np.ravel_multi_index(goal, (height, width)))
     m = edges.shape[0]
     path = pyastar2d.astar.astar(
-        weights.flatten(), edges.flatten(), trans.flatten(), height, width, m, start_idx, goal_idx, allow_diagonal,
+        weights.flatten().astype(np.intc), edges.flatten().astype(np.intc), trans.flatten().astype(np.float32), height, width, m, start_idx, goal_idx, allow_diagonal,
         int(heuristic_override)
     )
     return path
