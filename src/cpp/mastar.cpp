@@ -43,30 +43,27 @@ inline float l1_norm(int i0, int j0, int i1, int j1) {
 
 
 
-// weights:        flattened h x w grid of costs
-// h, w:           height and width of grid
-// start, goal:    index of start/goal in flattened grid
-// diag_ok:        if true, allows diagonal moves (8-conn.)
-// paths (output): for each node, stores previous node in path
-static PyObject *astar(PyObject *self, PyObject *args) {
+static PyObject *mastar(PyObject *self, PyObject *args) {
   const PyArrayObject* weights_object;
   const PyArrayObject* edges_object;
   const PyArrayObject* values_object;
   int h;
   int w;
   int m;
-  int start;
-  int goal;
+  const PyArrayObject* starts_obj;
+  const PyArrayObject* goals_obj;
+  int start_num;
+  int goal_num;
   int diag_ok;
   int heuristic_override;
 
   if (!PyArg_ParseTuple(
-        args, "OOOiiiiiii", // i = int, O = object
+        args, "OOOiiiOOiiii", // i = int, O = object
         &weights_object,
         &edges_object,
         &values_object,
         &h, &w, &m,
-        &start, &goal,
+        &starts_obj, &goals_obj, &start_num, &goal_num,
         &diag_ok, &heuristic_override
         ))
     return NULL;
@@ -74,7 +71,9 @@ static PyObject *astar(PyObject *self, PyObject *args) {
   int* weights = (int*) weights_object->data;
   int* edges = (int*) edges_object->data;
   float* values = (float*) values_object->data;
-  
+  int* starts = (int*) starts_obj->data;
+  int* goals = (int*) goals_obj->data;
+
   std::map<std::pair<int, int>, float> value_map;
 
   for (int i=0; i<m; i++)
@@ -85,42 +84,52 @@ static PyObject *astar(PyObject *self, PyObject *args) {
   int* paths = new int[h * w];
   int path_length = -1;
 
-  Node start_node(start, 0., 1);
-
   float* costs = new float[h * w];
   for (int i = 0; i < h * w; ++i)
     costs[i] = INF;
-  costs[start] = 0.;
 
   std::priority_queue<Node> nodes_to_visit;
-  nodes_to_visit.push(start_node);
+  
+
+  for (int i; i<start_num; i++)
+  {
+    int start = starts[i];
+    Node start_node(start, 0., 1);
+    costs[start] = 0.;
+    nodes_to_visit.push(start_node);
+  }
+
+  
+
+  
 
   int prev_path = -1;
 
   int* nbrs = new int[8];
-  
-  int goal_i = goal / w;
-  int goal_j = goal % w;
-  int start_i = start / w;
-  int start_j = start % w;
+  int reached_goal = goals[0];
+  //int goal_i = goal / w;
+  //int goal_j = goal % w;
+  //int start_i = start / w;
+  //int start_j = start % w;
 
   heuristic_ptr heuristic_func = select_heuristic(heuristic_override);
 
   while (!nodes_to_visit.empty()) {
     // .top() doesn't actually remove the node
     Node cur = nodes_to_visit.top();
-
-    if (cur.idx == goal) {
-      path_length = cur.path_length;
-      break;
+    bool bigbreak = false;
+    for (int i=0; i < goal_num; i++){
+        if (cur.idx == goals[i]) {
+          path_length = cur.path_length;
+          bigbreak = true;
+          reached_goal = goals[i];
+          break;
+        }
     }
-
-    if (cur.idx == start){
-        prev_path = -1;
+    if (bigbreak){
+        break;
     }
-    else{
-        prev_path = paths[cur.idx];
-    }
+    
 
     nodes_to_visit.pop();
 
@@ -136,9 +145,9 @@ static PyObject *astar(PyObject *self, PyObject *args) {
     nbrs[6] = (row + 1 < h)                            ? cur.idx + w       : -1;
     nbrs[7] = (diag_ok && row + 1 < h && col + 1 < w ) ? cur.idx + w + 1   : -1;
 
-    float heuristic_cost;
     int curLabel = weights[cur.idx];
     for (int i = 0; i < 8; ++i) {
+      float heuristic_cost = INF;
       if (nbrs[i] >= 0) {
         // the sum of the cost so far and the cost of this move
         float new_cost = INF;
@@ -148,13 +157,13 @@ static PyObject *astar(PyObject *self, PyObject *args) {
             new_cost = INF;
         }
         else if (neiLabel != curLabel){
-            if (value_map.find({curLabel-1, neiLabel-1}) == value_map.end()){
-                new_cost = costs[cur.idx] + 1;
-            }
-            else{
+            //if (value_map.find({curLabel-1, neiLabel-1}) == value_map.end()){
+            //    new_cost = costs[cur.idx] + 1;
+            //}
+            //else{
             new_cost = costs[cur.idx] + value_map[{curLabel-1, neiLabel-1}];
             nc = value_map[{curLabel, neiLabel}];
-            }
+            //}
         }
         else
         {
@@ -163,19 +172,27 @@ static PyObject *astar(PyObject *self, PyObject *args) {
         if (new_cost < costs[nbrs[i]]) {
           // estimate the cost to the goal based on legal moves
           // Get the heuristic method to use
-          heuristic_cost = 0;
-          /*
           if (heuristic_override == DEFAULT) {
             if (diag_ok) {
-              heuristic_cost = linf_norm(nbrs[i] / w, nbrs[i] % w, goal_i, goal_j);
+              for (int j=0; j<goal_num; j++){
+                  float heuristic_ = linf_norm(nbrs[i] / w, nbrs[i] % w, goals[j] / w, goals[j] % w);
+                  if (heuristic_ < heuristic_cost){
+                      heuristic_cost = heuristic_;
+                  }
+              }
+
             } else {
-              heuristic_cost = l1_norm(nbrs[i] / w, nbrs[i] % w, goal_i, goal_j);
+              
+              for (int j=0; j<goal_num; j++){
+                  float heuristic_ = l1_norm(nbrs[i] / w, nbrs[i] % w, goals[j] / w, goals[j] % w);
+                  if (heuristic_ < heuristic_cost){
+                      heuristic_cost = heuristic_;
+                  }
+              }
+              
             }
-          } else {
-            heuristic_cost = heuristic_func(
-              nbrs[i] / w, nbrs[i] % w, goal_i, goal_j, start_i, start_j);
           }
-          */
+
           // paths with lower expected cost are explored first
           float priority = new_cost + heuristic_cost;
           nodes_to_visit.push(Node(nbrs[i], priority, cur.path_length + 1));
@@ -192,7 +209,7 @@ static PyObject *astar(PyObject *self, PyObject *args) {
     npy_intp dims[2] = {path_length, 2};
     PyArrayObject* path = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_INT32);
     npy_int32 *iptr, *jptr;
-    int idx = goal;
+    int idx = reached_goal;
     for (npy_intp i = dims[0] - 1; i >= 0; --i) {
         iptr = (npy_int32*) (path->data + i * path->strides[0]);
         jptr = (npy_int32*) (path->data + i * path->strides[0] + path->strides[1]);
@@ -220,17 +237,16 @@ static PyObject *astar(PyObject *self, PyObject *args) {
 
 
 
-static PyMethodDef astar_methods[] = {
-    {"astar", (PyCFunction)astar, METH_VARARGS, "astar"},
+static PyMethodDef mastar_methods[] = {
+    {"mastar", (PyCFunction)mastar, METH_VARARGS, "mastar"},
     {NULL, NULL, 0, NULL}
 };
 
-static struct PyModuleDef astar_module = {
-    PyModuleDef_HEAD_INIT,"astar", NULL, -1, astar_methods
+static struct PyModuleDef mastar_module = {
+    PyModuleDef_HEAD_INIT,"mastar", NULL, -1, mastar_methods
 };
 
 PyMODINIT_FUNC PyInit_astar(void) {
   import_array();
-  return PyModule_Create(&astar_module);
+  return PyModule_Create(&mastar_module);
 }
-
