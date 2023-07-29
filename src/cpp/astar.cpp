@@ -105,7 +105,7 @@ static PyObject *astar(PyObject *self, PyObject *args) {
   int start_j = start % w;
 
   heuristic_ptr heuristic_func = select_heuristic(heuristic_override);
-
+  int steps = 0;
   while (!nodes_to_visit.empty()) {
     // .top() doesn't actually remove the node
     Node cur = nodes_to_visit.top();
@@ -123,7 +123,7 @@ static PyObject *astar(PyObject *self, PyObject *args) {
     }
 
     nodes_to_visit.pop();
-
+    steps = steps + 1;
     int row = cur.idx / w;
     int col = cur.idx % w;
     // check bounds and find up to eight neighbors: top to bottom, left to right
@@ -189,11 +189,18 @@ static PyObject *astar(PyObject *self, PyObject *args) {
 
   PyObject *return_val;
   if (path_length >= 0) {
-    npy_intp dims[2] = {path_length, 2};
+    npy_intp dims[2] = {path_length + 1, 2};
     PyArrayObject* path = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_INT32);
     npy_int32 *iptr, *jptr;
     int idx = goal;
-    for (npy_intp i = dims[0] - 1; i >= 0; --i) {
+    npy_intp i = dims[0] - 1;
+    iptr = (npy_int32*) (path->data + i * path->strides[0]);
+    jptr = (npy_int32*) (path->data + i * path->strides[0] + path->strides[1]);
+
+    *iptr = steps;
+    *jptr = steps;
+
+    for (npy_intp i = dims[0] - 2; i >= 0; --i) {
         iptr = (npy_int32*) (path->data + i * path->strides[0]);
         jptr = (npy_int32*) (path->data + i * path->strides[0] + path->strides[1]);
 
