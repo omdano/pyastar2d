@@ -6,10 +6,13 @@
 #include <iostream>
 #include <experimental_heuristics.h>
 #include<map>
+#include <vector>
+
 
 
 
 const float INF = std::numeric_limits<float>::infinity();
+const float SQRT2 = std::sqrt(2);
 
 // represents a single pixel
 class Node {
@@ -24,15 +27,26 @@ class Node {
 
 // the top of the priority queue is the greatest element by default,
 // but we want the smallest, so flip the sign
-bool operator<(const Node &n1, const Node &n2) {
-  return n1.cost > n2.cost;
-}
+
+
+struct CompareNode {
+    bool operator()(const Node& n1, const Node& n2) const {
+        return n1.cost > n2.cost;
+    }
+};
 
 // See for various grid heuristics:
 // http://theory.stanford.edu/~amitp/GameProgramming/Heuristics.html#S7
 // L_\inf norm (diagonal distance)
 inline float linf_norm(int i0, int j0, int i1, int j1) {
   return std::max(std::abs(i0 - i1), std::abs(j0 - j1));
+}
+
+inline float l2_norm(int i0, int j0, int i1, int j1) {
+  float x = i0 - i1;
+  float y = j0 - j1;
+
+  return std::sqrt(x*x + y*y);
 }
 
 // L_1 norm (manhattan distance)
@@ -52,6 +66,7 @@ static PyObject *astar(PyObject *self, PyObject *args) {
   const PyArrayObject* weights_object;
   const PyArrayObject* edges_object;
   const PyArrayObject* values_object;
+  const PyArrayObject* costs_object;
   int h;
   int w;
   int m;
@@ -61,10 +76,11 @@ static PyObject *astar(PyObject *self, PyObject *args) {
   int heuristic_override;
 
   if (!PyArg_ParseTuple(
-        args, "OOOiiiiiii", // i = int, O = object
+        args, "OOOOiiiiiii", // i = int, O = object
         &weights_object,
         &edges_object,
         &values_object,
+        &costs_object,
         &h, &w, &m,
         &start, &goal,
         &diag_ok, &heuristic_override
@@ -74,7 +90,9 @@ static PyObject *astar(PyObject *self, PyObject *args) {
   int* weights = (int*) weights_object->data;
   int* edges = (int*) edges_object->data;
   float* values = (float*) values_object->data;
-  
+  float* costx = (float*) costs_object->data;
+
+  std::vector<int> explored;
   std::map<std::pair<int, int>, float> value_map;
 
   for (int i=0; i<m; i++)
@@ -92,7 +110,7 @@ static PyObject *astar(PyObject *self, PyObject *args) {
     costs[i] = INF;
   costs[start] = 0.;
 
-  std::priority_queue<Node> nodes_to_visit;
+  std::priority_queue<Node, std::vector<Node>, CompareNode> nodes_to_visit;
   nodes_to_visit.push(start_node);
 
   int prev_path = -1;
@@ -109,6 +127,7 @@ static PyObject *astar(PyObject *self, PyObject *args) {
   while (!nodes_to_visit.empty()) {
     // .top() doesn't actually remove the node
     Node cur = nodes_to_visit.top();
+    explored.push_back(cur.idx);
 
     if (cur.idx == goal) {
       path_length = cur.path_length;
@@ -144,12 +163,24 @@ static PyObject *astar(PyObject *self, PyObject *args) {
         float new_cost = INF;
         float nc = 0;
         int neiLabel = weights[nbrs[i]];
+
+
+        float transition;
+        int idxdiff = std::abs(cur.idx - nbrs[i]);
+        if ((idxdiff == 1) || (idxdiff == w)){
+            transition = 1;
+        }
+        else{
+            transition = SQRT2;
+        }
+
         if (neiLabel == 0){
             new_cost = INF;
         }
+
         else if (neiLabel != curLabel){
             if (value_map.find({curLabel-1, neiLabel-1}) == value_map.end()){
-                new_cost = costs[cur.idx] + 1;
+                new_cost = costs[cur.idx] + transition;
             }
             else{
             new_cost = costs[cur.idx] + value_map[{curLabel-1, neiLabel-1}];
@@ -158,16 +189,19 @@ static PyObject *astar(PyObject *self, PyObject *args) {
         }
         else
         {
-            new_cost = costs[cur.idx] + 1;
+            new_cost = costs[cur.idx] + transition;
         }
+
+        new_cost = costx[nbrs[i]] + new_cost;
+
         if (new_cost < costs[nbrs[i]]) {
           // estimate the cost to the goal based on legal moves
           // Get the heuristic method to use
           heuristic_cost = 0;
-          /*
+          
           if (heuristic_override == DEFAULT) {
             if (diag_ok) {
-              heuristic_cost = linf_norm(nbrs[i] / w, nbrs[i] % w, goal_i, goal_j);
+              heuristic_cost = l2_norm(nbrs[i] / w, nbrs[i] % w, goal_i, goal_j);
             } else {
               heuristic_cost = l1_norm(nbrs[i] / w, nbrs[i] % w, goal_i, goal_j);
             }
@@ -175,7 +209,7 @@ static PyObject *astar(PyObject *self, PyObject *args) {
             heuristic_cost = heuristic_func(
               nbrs[i] / w, nbrs[i] % w, goal_i, goal_j, start_i, start_j);
           }
-          */
+          
           // paths with lower expected cost are explored first
           float priority = new_cost + heuristic_cost;
           nodes_to_visit.push(Node(nbrs[i], priority, cur.path_length + 1));
@@ -210,10 +244,14 @@ static PyObject *astar(PyObject *self, PyObject *args) {
         idx = paths[idx];
     }
 
-    return_val = PyArray_Return(path);
+    npy_intp explored_dims[1] = {static_cast<npy_intp>(explored.size())};
+    PyArrayObject* explored_array = (PyArrayObject*) PyArray_SimpleNew(1, explored_dims, NPY_INT32);
+    std::copy(explored.begin(), explored.end(), (int*)explored_array->data);
+
+    return_val = Py_BuildValue("OO", PyArray_Return(path), PyArray_Return(explored_array));
   }
   else {
-    return_val = Py_BuildValue(""); // no soln --> return None
+    return_val = Py_BuildValue("OO", Py_BuildValue(""), Py_BuildValue("")); // no soln --> return None
   }
 
   delete[] costs;

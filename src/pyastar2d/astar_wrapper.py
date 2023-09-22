@@ -15,7 +15,7 @@ ndmat_i2_type = np.ctypeslib.ndpointer(
 ndmat_i3_type = np.ctypeslib.ndpointer(
     dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
 # Define input/output types
-pyastar2d.astar.restype = ndmat_i1_type  # Nx2 (i, j) coordinates or None
+pyastar2d.astar.restype = ctypes.py_object  # Nx2 (i, j) coordinates or None
 pyastar2d.astar.argtypes = [
     ndmat_i2_type,   # weights
     ndmat_i3_type,   # edges
@@ -28,6 +28,13 @@ pyastar2d.astar.argtypes = [
     ctypes.c_bool,  # allow diagonal
     ctypes.c_int,   # heuristic_override
 ]
+
+from typing import List, NamedTuple
+
+class AStarResult(NamedTuple):
+    path: Optional[np.ndarray]  # The path as an Nx2 array
+    history: Optional[np.ndarray]  # The history as an array
+
 
 class Heuristic(IntEnum):
     """The supported heuristics."""
@@ -43,7 +50,8 @@ def astar_path(
         start: Tuple[int, int],
         goal: Tuple[int, int],
         allow_diagonal: bool = False,
-        heuristic_override: Heuristic = Heuristic.DEFAULT) -> Optional[np.ndarray]:
+        heuristic_override: Heuristic = Heuristic.DEFAULT,
+        costx: np.ndarray = None):
     """
     Run astar algorithm on 2d weights.
 
@@ -63,13 +71,14 @@ def astar_path(
     if (goal[0] < 0 or goal[0] >= weights.shape[0] or
             goal[1] < 0 or goal[1] >= weights.shape[1]):
         raise ValueError(f"Goal of {goal} lies outside grid.")
-
+    if costx is None:
+        costx = weights*0
     height, width = weights.shape
     start_idx = int(np.ravel_multi_index(start, (height, width)))
     goal_idx = int(np.ravel_multi_index(goal, (height, width)))
     m = edges.shape[0]
-    path = pyastar2d.astar.astar(
-        weights.flatten().astype(np.intc), edges.flatten().astype(np.intc), trans.flatten().astype(np.float32), height, width, m, start_idx, goal_idx, allow_diagonal,
+    result_tuple = pyastar2d.astar.astar(
+        weights.flatten().astype(np.intc), edges.flatten().astype(np.intc), trans.flatten().astype(np.float32), costx.flatten().astype(np.float32), height, width, m, start_idx, goal_idx, allow_diagonal,
         int(heuristic_override)
     )
-    return path
+    return result_tuple[0], result_tuple[1]
